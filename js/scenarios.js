@@ -12,8 +12,8 @@ let _lnCounter   = 0;
 const LOAN_DEFAULTS = {
   banque_ancien: { rate: 3.5, duration: 20, insurance: 0.3, agencyPct: 5, guaranteePct: 1, fileFee: 500, brokerFee: 2000 },
   banque_neuf:   { rate: 3.3, duration: 20, insurance: 0.3, agencyPct: 0, guaranteePct: 1, fileFee: 500, brokerFee: 0 },
-  ptz:           { amount: 75000, duration: 20, deferred: 0 },
-  al:            { amount: 30000, rate: 1.0, duration: 20, deferred: 120 },
+  ptz:           { amount: 75000, duration: 20, deferred: 10 },
+  al:            { amount: 30000, rate: 1.0, duration: 20, deferred: 0 },
 };
 
 // ─── HELPERS INTERNES ──────────────────────────────────────────────
@@ -395,10 +395,9 @@ function renderLoanCard(loan, sc) {
       <label class="label">Durée (ans)</label>
       <input type="number" id="dur_${lid}" class="input-field" value="${loan.duration}" min="5" max="25" oninput="recalculate()" />
     </div>
-    <div class="col-span-2">
-      <label class="label">Différé&nbsp;: <span id="deferVal_${lid}" class="text-blue-400 font-semibold">${loan.deferred}&nbsp;mois</span></label>
-      <input type="range" id="defer_${lid}" min="0" max="120" step="12" value="${loan.deferred}"
-        oninput="document.getElementById('deferVal_${lid}').textContent=this.value+'\u00a0mois';recalculate()" />
+    <div>
+      <label class="label">Différé (ans)</label>
+      <input type="number" id="defer_${lid}" class="input-field" value="${loan.deferred}" min="0" max="25" step="1" oninput="recalculate()" />
     </div>
   </div>
 </div>`;
@@ -426,9 +425,8 @@ function renderLoanCard(loan, sc) {
       <input type="number" id="dur_${lid}" class="input-field" value="${loan.duration}" min="5" max="25" oninput="recalculate()" />
     </div>
     <div>
-      <label class="label">Différé&nbsp;: <span id="deferVal_${lid}" class="text-purple-400 font-semibold">${loan.deferred}&nbsp;mois</span></label>
-      <input type="range" id="defer_${lid}" min="0" max="120" step="12" value="${loan.deferred}"
-        oninput="document.getElementById('deferVal_${lid}').textContent=this.value+'\u00a0mois';recalculate()" />
+      <label class="label">Différé (ans)</label>
+      <input type="number" id="defer_${lid}" class="input-field" value="${loan.deferred}" min="0" max="25" step="1" oninput="recalculate()" />
     </div>
   </div>
 </div>`;
@@ -490,7 +488,7 @@ function readLoanValues(loan) {
       id: lid, type: 'ptz',
       amount:   domNum(`amount_${lid}`, loan.amount),
       duration: domNum(`dur_${lid}`,    loan.duration),
-      deferred: domNum(`defer_${lid}`,  loan.deferred),
+      deferred: domNum(`defer_${lid}`,  loan.deferred) * 12,  // ans → mois
     };
   }
   if (loan.type === 'al') {
@@ -499,7 +497,7 @@ function readLoanValues(loan) {
       amount:   domNum(`amount_${lid}`, loan.amount),
       rate:     domNum(`rate_${lid}`,   loan.rate),
       duration: domNum(`dur_${lid}`,    loan.duration),
-      deferred: domNum(`defer_${lid}`,  loan.deferred),
+      deferred: domNum(`defer_${lid}`,  loan.deferred) * 12,  // ans → mois
     };
   }
   return { ...loan };
