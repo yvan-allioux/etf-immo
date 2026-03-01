@@ -25,15 +25,25 @@ function readGlobalInputs() {
 
 // ─── SYNCHRONISATION DES SLIDERS ──────────────────────────────────
 
+const SLIDER_PAIRS = [
+  ['debtRatio',          'debtRatioVal',  v => v + '%'],
+  ['inflationRate',      'inflationVal',  v => parseFloat(v).toFixed(1) + '%'],
+  ['propertyGrowthRate', 'growthVal',     v => parseFloat(v).toFixed(1) + '%'],
+  ['savingsReturnRate',  'savingsVal',    v => parseFloat(v).toFixed(1) + '%'],
+  ['simYears',           'simYearsVal',   v => v + ' ans'],
+];
+
+/** Met à jour l'affichage des labels de sliders sans déclencher d'événements. */
+function syncSliderDisplays() {
+  for (const [inputId, spanId, formatter] of SLIDER_PAIRS) {
+    const input = document.getElementById(inputId);
+    const span  = document.getElementById(spanId);
+    if (input && span) span.textContent = formatter(input.value);
+  }
+}
+
 function initGlobalSliders() {
-  const pairs = [
-    ['debtRatio',          'debtRatioVal',  v => v + '%'],
-    ['inflationRate',      'inflationVal',  v => parseFloat(v).toFixed(1) + '%'],
-    ['propertyGrowthRate', 'growthVal',     v => parseFloat(v).toFixed(1) + '%'],
-    ['savingsReturnRate',  'savingsVal',    v => parseFloat(v).toFixed(1) + '%'],
-    ['simYears',           'simYearsVal',   v => v + ' ans'],
-  ];
-  for (const [inputId, spanId, formatter] of pairs) {
+  for (const [inputId, spanId, formatter] of SLIDER_PAIRS) {
     const input = document.getElementById(inputId);
     const span  = document.getElementById(spanId);
     if (!input || !span) continue;
@@ -41,6 +51,95 @@ function initGlobalSliders() {
     update();
     input.addEventListener('input', update);
   }
+}
+
+// ─── SÉRIALISATION / PARTAGE ──────────────────────────────────────
+
+/**
+ * Sérialise l'état complet (inputs globaux + scénarios) en Base64.
+ * Format interne compact versionné (v:1).
+ */
+function serializeState() {
+  saveAllCurrentValues();
+  const g = readGlobalInputs();
+  const data = {
+    v: 1,
+    // Tableau ordonné pour compacité
+    g: [g.netSalary, g.totalCapital, g.maxContribution, g.currentRent,
+        g.debtRatio, g.inflationRate, g.propertyGrowthRate, g.savingsReturnRate, g.simYears],
+    sc: scenarioList.map(sc => ({
+      n:  sc.name,
+      t:  sc.type,
+      d:  sc.dpe,
+      ch: [sc.charges.coOwnership, sc.charges.homeInsurance, sc.charges.worksPct, sc.charges.taxMonths],
+      ln: sc.loans.map(l => {
+        if (l.type === 'banque') return ['b', l.rate, l.duration, l.insurance, l.agencyPct ?? 0, l.guaranteePct ?? 1, l.fileFee ?? 500, l.brokerFee ?? 0];
+        if (l.type === 'ptz')   return ['p', l.amount, l.duration, l.deferred];
+        if (l.type === 'al')    return ['a', l.amount, l.rate, l.duration, l.deferred];
+        return [];
+      }),
+    })),
+  };
+  return btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+}
+
+/**
+ * Restaure l'état depuis une chaîne Base64 (hash de l'URL).
+ * Retourne true si réussi, false sinon.
+ */
+function deserializeState(encoded) {
+  try {
+    const data = JSON.parse(decodeURIComponent(escape(atob(encoded))));
+    if (!data || data.v !== 1 || !Array.isArray(data.g) || !Array.isArray(data.sc)) return false;
+
+    // Restaure les inputs globaux
+    const inputIds = ['netSalary', 'totalCapital', 'maxContribution', 'currentRent',
+                      'debtRatio', 'inflationRate', 'propertyGrowthRate', 'savingsReturnRate', 'simYears'];
+    inputIds.forEach((id, i) => {
+      const el = document.getElementById(id);
+      if (el) el.value = data.g[i];
+    });
+
+    // Met à jour l'affichage des labels de sliders
+    syncSliderDisplays();
+
+    // Reconstruit et rend les scénarios
+    loadScenariosFromData(data.sc);
+
+    // Calcule tout
+    recalculate();
+    return true;
+  } catch (e) {
+    console.error('[Simulateur] Lien de partage invalide :', e);
+    return false;
+  }
+}
+
+/** Sérialise, met à jour le hash de l'URL et copie le lien dans le presse-papier. */
+function copyShareLink() {
+  const encoded = serializeState();
+  const url = location.origin + location.pathname + '#' + encoded;
+  history.replaceState(null, '', '#' + encoded);
+
+  const btn = document.getElementById('shareBtn');
+  const showCopied = () => {
+    if (!btn) return;
+    btn.textContent = 'Lien copié !';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Partager'; btn.classList.remove('copied'); }, 2500);
+  };
+
+  navigator.clipboard.writeText(url).then(showCopied).catch(() => {
+    // Fallback pour les contextes sans clipboard API (fichier local, HTTP)
+    const ta = document.createElement('textarea');
+    ta.value = url;
+    ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (_) {}
+    document.body.removeChild(ta);
+    showCopied();
+  });
 }
 
 // ─── RENDU ANALYSE LOCATAIRE ──────────────────────────────────────
@@ -236,8 +335,9 @@ function init() {
   initChart();
   initGlobalSliders();
 
-  // Crée un scénario de base par défaut
-  addScenario();
+  // Bouton de partage
+  document.getElementById('shareBtn')
+    ?.addEventListener('click', copyShareLink);
 
   // Bouton d'ajout de scénario
   document.getElementById('addScenarioBtn')
@@ -247,6 +347,12 @@ function init() {
   document.querySelectorAll('#globalInputs input').forEach(el => {
     el.addEventListener('input', recalculate);
   });
+
+  // Chargement depuis un lien partagé (hash URL) ou scénario par défaut
+  const hash = location.hash.slice(1);
+  if (!hash || !deserializeState(hash)) {
+    addScenario();
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);

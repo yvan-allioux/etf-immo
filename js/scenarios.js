@@ -146,6 +146,43 @@ function removeLoan(scId, loanId) {
   recalculate();
 }
 
+// ─── CHARGEMENT DEPUIS DONNÉES SÉRIALISÉES ────────────────────────
+
+/**
+ * Reconstruit scenarioList depuis des données désérialisées.
+ * Appelé par deserializeState() dans main.js lors du chargement d'un lien partagé.
+ */
+function loadScenariosFromData(scenariosData) {
+  scenarioList.length = 0;
+  _scCounter = 0;
+  _lnCounter = 0;
+
+  for (const sd of scenariosData) {
+    const sc = {
+      id:   newScId(),
+      name: sd.n,
+      type: sd.t,
+      dpe:  sd.d,
+      charges: {
+        coOwnership:   sd.ch[0],
+        homeInsurance: sd.ch[1],
+        worksPct:      sd.ch[2],
+        taxMonths:     sd.ch[3],
+      },
+      loans: [],
+    };
+    for (const ld of sd.ln) {
+      const lid = newLnId();
+      if      (ld[0] === 'b') sc.loans.push({ id: lid, type: 'banque', rate: ld[1], duration: ld[2], insurance: ld[3], agencyPct: ld[4], guaranteePct: ld[5], fileFee: ld[6], brokerFee: ld[7] });
+      else if (ld[0] === 'p') sc.loans.push({ id: lid, type: 'ptz',   amount: ld[1], duration: ld[2], deferred: ld[3] });
+      else if (ld[0] === 'a') sc.loans.push({ id: lid, type: 'al',    amount: ld[1], rate: ld[2], duration: ld[3], deferred: ld[4] });
+    }
+    scenarioList.push(sc);
+  }
+
+  renderAllScenarios();
+}
+
 // ─── RENDU HTML ───────────────────────────────────────────────────
 
 function renderAllScenarios() {

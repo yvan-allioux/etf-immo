@@ -287,6 +287,23 @@ input[type=range]::-moz-range-thumb {
 /* Séparateur léger */
 .dr-sep { height: 5px; }
 
+/* ─── SHARE BUTTON ──────────────────────────────────────── */
+.btn-share {
+  padding: 6px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid #374151;
+  background: #111827;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.btn-share:hover { border-color: #818cf8; color: #a5b4fc; background: #1a1730; }
+.btn-share.copied { border-color: #34d399; color: #34d399; background: #052e1a; }
+
 /* ─── MISC ──────────────────────────────────────────────── */
 select.input-field option { background: #1f2937; }
 .remove-btn {
