@@ -606,9 +606,11 @@ function calcScenario(scValues, globalInputs) {
     extSchedule.push({ ...lastEntry, bankBalance: 0, totalBalance: 0, bankPmt: 0, insMonthly: 0, otherPmt: 0 });
   }
 
+  const decotePct = globalInputs.decote ?? 0;
   const wealthSeries = buildPurchaseWealthSeries(
     V, extSchedule, residualSavings,
-    globalInputs.propertyGrowthRate, globalInputs.savingsReturnRate, globalInputs.simYears
+    globalInputs.propertyGrowthRate, globalInputs.savingsReturnRate, globalInputs.simYears,
+    decotePct
   );
 
   // ─── Données détaillées ───────────────────────────────────────────
@@ -691,13 +693,18 @@ function calcScenario(scValues, globalInputs) {
   } : null;
 
   // Prévision patrimoniale
-  const finalPropertyValue = V * Math.pow(1 + globalInputs.propertyGrowthRate / 100, globalInputs.simYears);
+  const effectiveV         = V * (1 - decotePct / 100);
+  const finalPropertyValue = effectiveV * Math.pow(1 + globalInputs.propertyGrowthRate / 100, globalInputs.simYears);
   const finalDebt          = extSchedule[extSchedule.length - 1]?.totalBalance || 0;
   const finalSavings       = residualSavings * Math.pow(1 + globalInputs.savingsReturnRate / 100, globalInputs.simYears);
   const forecast = {
     simYears:           globalInputs.simYears,
+    propertyPrice:      V,
+    effectiveV,
+    decotePct,
+    decoteLoss:         V - effectiveV,
     finalPropertyValue,
-    propertyGain:       finalPropertyValue - V,
+    propertyGain:       finalPropertyValue - effectiveV,
     finalDebt,
     finalSavings,
     residualSavings,
@@ -858,7 +865,11 @@ function renderScenarioResults(scId, result) {
     row('Épargne résiduelle (capital hors apport)', fmt(fo.residualSavings)) +
     sub('→ après ' + fmtAns(fo.simYears) + ' au taux épargne', fmt(fo.finalSavings), 'text-blue-300') +
     sep() +
-    row('Prix du bien aujourd\'hui', fmt(V)) +
+    row('Prix d\'achat', fmt(fo.propertyPrice)) +
+    (fo.decotePct > 0
+      ? sub('− Décote à l\'achat (' + fo.decotePct + '%) — valeur de revente immédiate', '−' + fmt(fo.decoteLoss), 'text-red-300') +
+        sub('= Valeur de marché initiale', fmt(fo.effectiveV), 'text-orange-300')
+      : '') +
     sub('→ valeur dans ' + fmtAns(fo.simYears) + ' (+' + fmt(fo.propertyGain) + ')', fmt(fo.finalPropertyValue), 'text-white') +
     (fo.finalDebt > 0
       ? sub('− Capital restant dû', '−' + fmt(fo.finalDebt), 'text-red-300')

@@ -20,6 +20,7 @@ function readGlobalInputs() {
     propertyGrowthRate:g('propertyGrowthRate'),
     savingsReturnRate: g('savingsReturnRate'),
     simYears:          Math.max(1, Math.round(g('simYears'))),
+    decote:            g('decote'),
   };
 }
 
@@ -31,6 +32,7 @@ const SLIDER_PAIRS = [
   ['propertyGrowthRate', 'growthVal',     v => parseFloat(v).toFixed(1) + '%'],
   ['savingsReturnRate',  'savingsVal',    v => parseFloat(v).toFixed(1) + '%'],
   ['simYears',           'simYearsVal',   v => v + ' ans'],
+  ['decote',             'decoteVal',     v => parseInt(v) + '%'],
 ];
 
 /** Met à jour l'affichage des labels de sliders sans déclencher d'événements. */

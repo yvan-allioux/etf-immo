@@ -196,10 +196,15 @@ function computeSmoothedSchedule({ targetMonthly, bankRate, bankMonths, borrower
 /**
  * Patrimoine net annuel pour un scénario achat.
  * = valeur du bien (revalorisée) − dette restante − frais de revente (6%) + épargne résiduelle
+ *
+ * @param {number} decotePct - Décote immédiate à l'achat (%, ex: 15 pour 15%).
+ *   Représente la perte de valeur de marché dès l'acquisition (TVA neuf,
+ *   marges promoteur, frais de commercialisation). La croissance s'applique
+ *   ensuite sur la valeur après décote.
  */
-function buildPurchaseWealthSeries(V, schedule, residualSavings, propertyGrowthRate, savingsReturnRate, simYears) {
+function buildPurchaseWealthSeries(V, schedule, residualSavings, propertyGrowthRate, savingsReturnRate, simYears, decotePct = 0) {
   const series = [];
-  let propVal = V;
+  let propVal = V * (1 - decotePct / 100);
   let savings = residualSavings;
 
   for (let year = 1; year <= simYears; year++) {
