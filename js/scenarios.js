@@ -14,6 +14,7 @@ const LOAN_DEFAULTS = {
   banque_neuf:   { rate: 3.3, duration: 20, insurance: 0.3, agencyPct: 0, guaranteePct: 1, fileFee: 500, brokerFee: 0 },
   ptz:           { amount: 75000, duration: 20, deferred: 10 },
   al:            { amount: 30000, rate: 1.0, duration: 20, deferred: 0 },
+  don:           { amount: 50000, taxPct: 0 },
 };
 
 // ─── HELPERS INTERNES ──────────────────────────────────────────────
@@ -37,6 +38,7 @@ function createLoan(type, scType) {
   }
   if (type === 'ptz') return { id, type: 'ptz', ...LOAN_DEFAULTS.ptz };
   if (type === 'al')  return { id, type: 'al',  ...LOAN_DEFAULTS.al  };
+  if (type === 'don') return { id, type: 'don', ...LOAN_DEFAULTS.don };
   return null;
 }
 
@@ -102,6 +104,9 @@ function saveCurrentValues(scId) {
       loan.rate     = domNum(`rate_${lid}`,   loan.rate);
       loan.duration = domNum(`dur_${lid}`,    loan.duration);
       loan.deferred = domNum(`defer_${lid}`,  loan.deferred);
+    } else if (loan.type === 'don') {
+      loan.amount = domNum(`amount_${lid}`, loan.amount);
+      loan.taxPct = domNum(`taxPct_${lid}`, loan.taxPct ?? 0);
     }
   }
 }
@@ -176,6 +181,7 @@ function loadScenariosFromData(scenariosData) {
       if      (ld[0] === 'b') sc.loans.push({ id: lid, type: 'banque', rate: ld[1], duration: ld[2], insurance: ld[3], agencyPct: ld[4], guaranteePct: ld[5], fileFee: ld[6], brokerFee: ld[7] });
       else if (ld[0] === 'p') sc.loans.push({ id: lid, type: 'ptz',   amount: ld[1], duration: ld[2], deferred: ld[3] });
       else if (ld[0] === 'a') sc.loans.push({ id: lid, type: 'al',    amount: ld[1], rate: ld[2], duration: ld[3], deferred: ld[4] });
+      else if (ld[0] === 'd') sc.loans.push({ id: lid, type: 'don',   amount: ld[1], taxPct:   ld[2] });
     }
     scenarioList.push(sc);
   }
@@ -289,6 +295,7 @@ function renderScenarioCard(sc) {
     <button onclick="addLoan('${sc.id}','banque')" class="btn-add btn-add-banque">+ Prêt Banque</button>
     <button onclick="addLoan('${sc.id}','ptz')"   class="btn-add btn-add-ptz">+ PTZ</button>
     <button onclick="addLoan('${sc.id}','al')"    class="btn-add btn-add-al">+ Action Logement</button>
+    <button onclick="addLoan('${sc.id}','don')"   class="btn-add btn-add-don">+ Don</button>
   </div>
 
   <!-- ── Charges récurrentes ── -->
@@ -403,6 +410,32 @@ function renderLoanCard(loan, sc) {
 </div>`;
   }
 
+  if (loan.type === 'don') {
+    const taxPct = loan.taxPct ?? 0;
+    const net = (loan.amount || 0) * (1 - taxPct / 100);
+    return `
+<div class="loan-card loan-don">
+  <div class="flex items-center gap-2 mb-3">
+    <span class="text-xs font-semibold text-emerald-300 uppercase tracking-wider">Don — Apport additionnel</span>
+    ${removeBtn}
+  </div>
+  <div class="grid grid-cols-2 gap-2">
+    <div>
+      <label class="label">Montant brut (€)</label>
+      <input type="number" id="amount_${lid}" class="input-field" value="${loan.amount}" min="0" step="1000" oninput="recalculate()" />
+    </div>
+    <div>
+      <label class="label">Taxe&nbsp;: <span id="taxPctVal_${lid}" class="text-emerald-400 font-semibold">${taxPct}%</span></label>
+      <input type="range" id="taxPct_${lid}" min="0" max="100" step="1" value="${taxPct}"
+        oninput="document.getElementById('taxPctVal_${lid}').textContent=this.value+'%';document.getElementById('netVal_${lid}').textContent=(parseFloat(document.getElementById('amount_${lid}').value||0)*(1-this.value/100)).toLocaleString('fr-FR')+' €';recalculate()" />
+    </div>
+    <div class="col-span-2 text-xs text-emerald-300/80">
+      Don net ajouté à l'apport (ce scénario uniquement)&nbsp;: <span id="netVal_${lid}" class="font-semibold text-emerald-300">${Math.round(net).toLocaleString('fr-FR')} €</span>
+    </div>
+  </div>
+</div>`;
+  }
+
   if (loan.type === 'al') {
     return `
 <div class="loan-card loan-al">
@@ -500,6 +533,13 @@ function readLoanValues(loan) {
       deferred: domNum(`defer_${lid}`,  loan.deferred) * 12,  // ans → mois
     };
   }
+  if (loan.type === 'don') {
+    return {
+      id: lid, type: 'don',
+      amount: domNum(`amount_${lid}`, loan.amount),
+      taxPct: domNum(`taxPct_${lid}`, loan.taxPct ?? 0),
+    };
+  }
   return { ...loan };
 }
 
@@ -545,6 +585,11 @@ function calcScenario(scValues, globalInputs) {
   const alDeferred = alLoan ? Math.round(alLoan.deferred) : 0;
   const alMonthlyPmt = alAmount > 0 && alMonths > 0 ? monthlyPayment(alAmount, alRate, alMonths) : 0;
 
+  // Dons (n'entrent pas dans l'amortissement — uniquement dans la contribution)
+  const giftLoans   = loans.filter(l => l.type === 'don');
+  const giftGross   = giftLoans.reduce((s, g) => s + (g.amount || 0), 0);
+  const giftNet     = giftLoans.reduce((s, g) => s + (g.amount || 0) * (1 - (g.taxPct || 0) / 100), 0);
+
   // Tableau des prêts aidés pour le lissage
   const auxLoans = [];
   if (ptzAmount > 0) {
@@ -575,7 +620,7 @@ function calcScenario(scValues, globalInputs) {
   });
   const maxTotalLoan = smoothed.bankPrincipal + ptzAmount + alAmount;
   const V = findMaxPropertyPrice(
-    globalInputs.maxContribution, maxTotalLoan, isNew,
+    globalInputs.maxContribution + giftNet, maxTotalLoan, isNew,
     agencyPct, bankLoan.guaranteePct ?? 1, fixedFees
   );
 
@@ -629,6 +674,9 @@ function calcScenario(scValues, globalInputs) {
     totalFees:     nfDisplay + afDisplay + gfDisplay + fixedFees,
     totalCost:     V + nfDisplay + afDisplay + gfDisplay + fixedFees,
     apport:        globalInputs.maxContribution,
+    giftGross,
+    giftNet,
+    apportTotal:   globalInputs.maxContribution + giftNet,
     totalBorrowed: bankPrincipal + ptzAmount + alAmount,
   };
 
@@ -782,8 +830,15 @@ function renderScenarioResults(scId, result) {
     tot('= Coût total acquisition', fmt(acquisition.totalCost)) +
     sep() +
     sub('− Apport personnel', '−' + fmt(acquisition.apport), 'text-blue-300') +
+    (acquisition.giftNet > 0
+      ? sub('− Don net (' + fmt(acquisition.giftGross) + ' brut, taxe ' + ((1 - acquisition.giftNet / Math.max(1, acquisition.giftGross)) * 100).toFixed(0) + '%)',
+            '−' + fmt(acquisition.giftNet), 'text-emerald-300')
+      : '') +
+    (acquisition.giftNet > 0
+      ? sub('= Apport total (personnel + don)', fmt(acquisition.apportTotal), 'text-blue-200')
+      : '') +
     tot('= Total emprunté', fmt(acquisition.totalBorrowed), 'text-blue-300') +
-    (acquisition.totalBorrowed > 0 ? sub('Levier (emprunt / apport)', (acquisition.totalBorrowed / Math.max(1, acquisition.apport)).toFixed(1) + '×') : '');
+    (acquisition.totalBorrowed > 0 ? sub('Levier (emprunt / apport total)', (acquisition.totalBorrowed / Math.max(1, acquisition.apportTotal)).toFixed(1) + '×') : '');
   const acqSection = sec('Frais d\'acquisition', acqBody);
 
   // ── 3. Budget mensuel ───────────────────────────────────────────

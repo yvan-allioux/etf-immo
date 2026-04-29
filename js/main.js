@@ -65,7 +65,7 @@ function serializeState() {
   saveAllCurrentValues();
   const g = readGlobalInputs();
   const data = {
-    v: 1,
+    v: 2,
     // Tableau ordonné pour compacité
     g: [g.netSalary, g.totalCapital, g.maxContribution, g.currentRent,
         g.debtRatio, g.inflationRate, g.propertyGrowthRate, g.savingsReturnRate, g.simYears],
@@ -78,6 +78,7 @@ function serializeState() {
         if (l.type === 'banque') return ['b', l.rate, l.duration, l.insurance, l.agencyPct ?? 0, l.guaranteePct ?? 1, l.fileFee ?? 500, l.brokerFee ?? 0];
         if (l.type === 'ptz')   return ['p', l.amount, l.duration, l.deferred];
         if (l.type === 'al')    return ['a', l.amount, l.rate, l.duration, l.deferred];
+        if (l.type === 'don')   return ['d', l.amount, l.taxPct ?? 0];
         return [];
       }),
     })),
@@ -92,7 +93,7 @@ function serializeState() {
 function deserializeState(encoded) {
   try {
     const data = JSON.parse(decodeURIComponent(escape(atob(encoded))));
-    if (!data || data.v !== 1 || !Array.isArray(data.g) || !Array.isArray(data.sc)) return false;
+    if (!data || (data.v !== 1 && data.v !== 2) || !Array.isArray(data.g) || !Array.isArray(data.sc)) return false;
 
     // Restaure les inputs globaux
     const inputIds = ['netSalary', 'totalCapital', 'maxContribution', 'currentRent',
