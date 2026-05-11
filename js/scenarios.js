@@ -57,6 +57,7 @@ function createDefaultScenario(type) {
       worksPct:     isNew ? 0.5 : 0.75,
       taxMonths:    1,
     },
+    moveInDelay: 0,
   };
 }
 
@@ -83,6 +84,7 @@ function saveCurrentValues(scId) {
   sc.charges.homeInsurance= domNum(`hi_${scId}`,  sc.charges.homeInsurance);
   sc.charges.worksPct     = domNum(`wp_${scId}`,  sc.charges.worksPct);
   sc.charges.taxMonths    = domNum(`tm_${scId}`,  sc.charges.taxMonths);
+  sc.moveInDelay          = domNum(`delay_${scId}`, sc.moveInDelay ?? 0);
 
   // Prêts
   for (const loan of sc.loans) {
@@ -174,6 +176,7 @@ function loadScenariosFromData(scenariosData) {
         worksPct:      sd.ch[2],
         taxMonths:     sd.ch[3],
       },
+      moveInDelay: sd.del ?? 0,
       loans: [],
     };
     for (const ld of sd.ln) {
@@ -296,6 +299,18 @@ function renderScenarioCard(sc) {
     <button onclick="addLoan('${sc.id}','ptz')"   class="btn-add btn-add-ptz">+ PTZ</button>
     <button onclick="addLoan('${sc.id}','al')"    class="btn-add btn-add-al">+ Action Logement</button>
     <button onclick="addLoan('${sc.id}','don')"   class="btn-add btn-add-don">+ Don</button>
+  </div>
+
+  <!-- ── Délai avant emménagement ── -->
+  <div class="border-t border-gray-700 pt-3 mb-4">
+    <p class="section-title" style="margin-bottom:10px">Disponibilité du bien</p>
+    <div>
+      <label class="label">Délai avant emménagement (mois)
+        <span class="text-xs text-gray-400 font-normal"> — ex. VEFA, travaux</span>
+      </label>
+      <input type="number" id="delay_${sc.id}" class="input-field" value="${sc.moveInDelay ?? 0}"
+        min="0" max="60" step="1" oninput="recalculate()" />
+    </div>
   </div>
 
   <!-- ── Charges récurrentes ── -->
@@ -499,7 +514,8 @@ function readScenarioValues(sc) {
   };
 
   const loans = sc.loans.map(loan => readLoanValues(loan));
-  return { id: sid, name, type, dpe, loans, charges };
+  const moveInDelay = domNum(`delay_${sid}`, sc.moveInDelay ?? 0);
+  return { id: sid, name, type, dpe, loans, charges, moveInDelay };
 }
 
 function readLoanValues(loan) {
@@ -652,10 +668,12 @@ function calcScenario(scValues, globalInputs) {
   }
 
   const decotePct = globalInputs.decote ?? 0;
+  const moveInDelayMonths = scValues.moveInDelay ?? 0;
+  const totalRentDuringDelay = moveInDelayMonths * globalInputs.currentRent;
   const wealthSeries = buildPurchaseWealthSeries(
     V, extSchedule, residualSavings,
     globalInputs.propertyGrowthRate, globalInputs.savingsReturnRate, globalInputs.simYears,
-    decotePct
+    decotePct, moveInDelayMonths, globalInputs.currentRent
   );
 
   // ─── Données détaillées ───────────────────────────────────────────
@@ -764,6 +782,8 @@ function calcScenario(scValues, globalInputs) {
     totalChargesMonthly, taxMonthly, remainingIncome,
     creditCost, realCost, wealthSeries, schedule: extSchedule,
     acquisition, monthly, bankAnalysis, ptzAnalysis, alAnalysis, forecast,
+    moveInDelayMonths, totalRentDuringDelay,
+    currentRent: globalInputs.currentRent,
   };
 }
 
@@ -914,7 +934,19 @@ function renderScenarioResults(scId, result) {
     alSection = sec('Analyse — Action Logement (' + fmtPct(aa.rate) + ', ' + fmtAns(aa.duration) + (aa.deferred > 0 ? ', différé ' + aa.deferred + ' mois' : '') + ')', alBody);
   }
 
-  // ── 7. Prévision patrimoniale ───────────────────────────────────
+  // ── 7. Impact du délai avant emménagement ──────────────────────
+  let delaySection = '';
+  if (result.moveInDelayMonths > 0) {
+    const dm = result.moveInDelayMonths;
+    const delayBody =
+      row('Durée du délai', dm + ' mois (' + (dm / 12).toFixed(1) + ' ans)', 'text-orange-300') +
+      row('Loyer mensuel payé en double', fmt(result.currentRent) + '/mois', 'text-red-300') +
+      tot('Loyers totaux pendant le délai', '−' + fmt(result.totalRentDuringDelay), 'text-red-400') +
+      sub('Réduit l\'épargne résiduelle investissable pendant cette période', '');
+    delaySection = sec('Impact du délai avant emménagement', delayBody);
+  }
+
+  // ── 8. Prévision patrimoniale ───────────────────────────────────
   const fo = forecast;
   const forecastBody =
     row('Épargne résiduelle (capital hors apport)', fmt(fo.residualSavings)) +
@@ -934,5 +966,5 @@ function renderScenarioResults(scId, result) {
     tot('Patrimoine net estimé à ' + fmtAns(fo.simYears), fmt(fo.finalWealth), 'text-emerald-400');
   const forecastSection = sec('Prévision patrimoniale à ' + fmtAns(fo.simYears), forecastBody);
 
-  container.innerHTML = synthese + acqSection + budgetSection + bankSection + ptzSection + alSection + forecastSection;
+  container.innerHTML = synthese + acqSection + budgetSection + bankSection + ptzSection + alSection + delaySection + forecastSection;
 }

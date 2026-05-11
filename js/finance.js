@@ -201,19 +201,30 @@ function computeSmoothedSchedule({ targetMonthly, bankRate, bankMonths, borrower
  *   Représente la perte de valeur de marché dès l'acquisition (TVA neuf,
  *   marges promoteur, frais de commercialisation). La croissance s'applique
  *   ensuite sur la valeur après décote.
+ * @param {number} moveInDelayMonths - Mois entre l'achat et l'emménagement.
+ *   Pendant ce délai, l'acheteur continue de payer son loyer (currentRent)
+ *   en plus des mensualités du crédit, ce qui réduit l'épargne résiduelle.
+ * @param {number} currentRent - Loyer mensuel courant (€/mois).
  */
-function buildPurchaseWealthSeries(V, schedule, residualSavings, propertyGrowthRate, savingsReturnRate, simYears, decotePct = 0) {
+function buildPurchaseWealthSeries(V, schedule, residualSavings, propertyGrowthRate, savingsReturnRate, simYears, decotePct = 0, moveInDelayMonths = 0, currentRent = 0) {
   const series = [];
   let propVal = V * (1 - decotePct / 100);
   let savings = residualSavings;
+  const monthlyRate = savingsReturnRate / 100 / 12;
+  const totalMonths = simYears * 12;
 
-  for (let year = 1; year <= simYears; year++) {
-    propVal *= (1 + propertyGrowthRate / 100);
-    savings *= (1 + savingsReturnRate / 100);
-    const idx          = Math.min(year * 12, schedule.length) - 1;
-    const remainingDebt = schedule[Math.max(0, idx)].totalBalance;
-    const resaleFees   = propVal * 0.06;
-    series.push(propVal - remainingDebt - resaleFees + savings);
+  for (let month = 1; month <= totalMonths; month++) {
+    savings *= (1 + monthlyRate);
+    if (month <= moveInDelayMonths) {
+      savings = Math.max(0, savings - currentRent);
+    }
+    if (month % 12 === 0) {
+      propVal *= (1 + propertyGrowthRate / 100);
+      const idx = Math.min(month, schedule.length) - 1;
+      const remainingDebt = schedule[Math.max(0, idx)].totalBalance;
+      const resaleFees = propVal * 0.06;
+      series.push(propVal - remainingDebt - resaleFees + savings);
+    }
   }
   return series;
 }

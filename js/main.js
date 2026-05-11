@@ -74,6 +74,7 @@ function serializeState() {
       t:  sc.type,
       d:  sc.dpe,
       ch: [sc.charges.coOwnership, sc.charges.homeInsurance, sc.charges.worksPct, sc.charges.taxMonths],
+      del: sc.moveInDelay ?? 0,
       ln: sc.loans.map(l => {
         if (l.type === 'banque') return ['b', l.rate, l.duration, l.insurance, l.agencyPct ?? 0, l.guaranteePct ?? 1, l.fileFee ?? 500, l.brokerFee ?? 0];
         if (l.type === 'ptz')   return ['p', l.amount, l.duration, l.deferred];
