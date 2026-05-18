@@ -12,7 +12,6 @@ const SCENARIO_COLORS = [
   '#ec4899', // pink   — scénario 6
   '#14b8a6', // teal   — scénario 7
 ];
-const TENANT_COLOR = '#818cf8';
 
 let wealthChart = null;
 
@@ -76,68 +75,51 @@ function initChart() {
 /**
  * Met à jour le graphique avec les séries de patrimoine de tous les scénarios.
  *
- * @param {number[][]} wealthSeriesArray - tableau de séries (une par scénario achat)
+ * @param {number[][]} wealthSeriesArray - tableau de séries (une par scénario)
  * @param {string[]}   names             - noms des scénarios
- * @param {number[]}   tenantSeries      - série patrimoine locataire
+ * @param {string[]}   types             - types des scénarios ('ancien'|'neuf'|'location')
  * @param {number}     simYears          - durée de simulation
  */
-function updateChart(wealthSeriesArray, names, tenantSeries, simYears) {
+function updateChart(wealthSeriesArray, names, types, simYears) {
   if (!wealthChart) return;
 
   const labels = Array.from({ length: simYears }, (_, i) => `An ${i + 1}`);
   wealthChart.data.labels = labels;
 
-  // Datasets des scénarios achat
   const datasets = wealthSeriesArray.map((series, i) => {
-    const color = SCENARIO_COLORS[i % SCENARIO_COLORS.length];
+    const color    = SCENARIO_COLORS[i % SCENARIO_COLORS.length];
+    const isLoc    = types && types[i] === 'location';
     return {
       label:           names[i] || `Scénario ${i + 1}`,
       data:            series,
       borderColor:     color,
-      backgroundColor: hexToRgba(color, 0.08),
+      backgroundColor: hexToRgba(color, isLoc ? 0 : 0.08),
       tension:         0.3,
-      fill:            true,
+      fill:            !isLoc,
+      borderDash:      isLoc ? [4, 3] : [],
       pointRadius:     3,
       borderWidth:     2,
     };
   });
 
-  // Dataset locataire (pointillé, sans fill)
-  datasets.push({
-    label:           'Location',
-    data:            tenantSeries,
-    borderColor:     TENANT_COLOR,
-    backgroundColor: 'transparent',
-    tension:         0.3,
-    fill:            false,
-    borderDash:      [6, 4],
-    pointRadius:     3,
-    borderWidth:     2,
-  });
-
   wealthChart.data.datasets = datasets;
-  wealthChart.update('none'); // 'none' désactive les animations sur mise à jour
+  wealthChart.update('none');
 
-  // Met à jour la légende custom
-  updateChartLegend(names, simYears);
+  updateChartLegend(names, types);
 }
 
-function updateChartLegend(names) {
+function updateChartLegend(names, types) {
   const legend = document.getElementById('chartLegend');
   if (!legend) return;
 
   const items = names.map((name, i) => {
     const color = SCENARIO_COLORS[i % SCENARIO_COLORS.length];
-    return `<span class="flex items-center gap-1.5">
-      <span style="display:inline-block;width:14px;height:3px;background:${color};border-radius:2px;flex-shrink:0"></span>
-      <span>${name}</span>
-    </span>`;
+    const isLoc = types && types[i] === 'location';
+    const marker = isLoc
+      ? `<span style="display:inline-block;width:14px;height:0;border-top:2px dashed ${color};flex-shrink:0"></span>`
+      : `<span style="display:inline-block;width:14px;height:3px;background:${color};border-radius:2px;flex-shrink:0"></span>`;
+    return `<span class="flex items-center gap-1.5">${marker}<span>${name}</span></span>`;
   });
-
-  items.push(`<span class="flex items-center gap-1.5">
-    <span style="display:inline-block;width:14px;height:0;border-top:2px dashed ${TENANT_COLOR};flex-shrink:0"></span>
-    <span>Location</span>
-  </span>`);
 
   legend.innerHTML = items.join('');
 }

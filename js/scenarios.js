@@ -43,11 +43,15 @@ function createLoan(type, scType) {
 }
 
 function createDefaultScenario(type) {
-  const id   = newScId();
+  const id    = newScId();
+  const name  = `Scénario ${String.fromCharCode(65 + scenarioList.length)}`;
+  if (type === 'location') {
+    return { id, name, type: 'location' };
+  }
   const isNew = type === 'neuf';
   return {
     id,
-    name:   `Scénario ${String.fromCharCode(65 + scenarioList.length)}`,
+    name,
     type,
     dpe:    isNew ? 'A' : 'C',
     loans:  [createLoan('banque', type)],
@@ -67,17 +71,19 @@ function saveCurrentValues(scId) {
   const sc = scenarioList.find(s => s.id === scId);
   if (!sc) return;
 
-  // Type
-  const typeEl = document.getElementById(`type_${scId}`);
-  if (typeEl) sc.type = typeEl.checked ? 'neuf' : 'ancien';
-
-  // DPE
-  const dpeActive = document.querySelector(`#dpeGroup_${scId} .dpe-btn.active`);
-  if (dpeActive) sc.dpe = dpeActive.dataset.dpe;
+  // Type (sélecteur 3-états Ancien/Neuf/Location)
+  const typeActive = document.querySelector(`#typeGroup_${scId} .type-btn.active`);
+  if (typeActive) sc.type = typeActive.dataset.type;
 
   // Nom
   const nameEl = document.getElementById(`name_${scId}`);
   if (nameEl) sc.name = nameEl.value || sc.name;
+
+  if (sc.type === 'location') return;
+
+  // DPE
+  const dpeActive = document.querySelector(`#dpeGroup_${scId} .dpe-btn.active`);
+  if (dpeActive) sc.dpe = dpeActive.dataset.dpe;
 
   // Charges
   sc.charges.coOwnership  = domNum(`co_${scId}`,  sc.charges.coOwnership);
@@ -165,6 +171,10 @@ function loadScenariosFromData(scenariosData) {
   _lnCounter = 0;
 
   for (const sd of scenariosData) {
+    if (sd.t === 'location') {
+      scenarioList.push({ id: newScId(), name: sd.n, type: 'location' });
+      continue;
+    }
     const sc = {
       id:   newScId(),
       name: sd.n,
@@ -199,8 +209,37 @@ function renderAllScenarios() {
   if (!container) return;
   container.innerHTML = scenarioList.map(sc => renderScenarioCard(sc)).join('');
 
-  // Wire les boutons DPE (toggleable)
   for (const sc of scenarioList) {
+    // Wire le sélecteur 3-états Ancien/Neuf/Location
+    const typeGroup = document.getElementById(`typeGroup_${sc.id}`);
+    if (typeGroup) {
+      typeGroup.querySelectorAll('.type-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          saveAllCurrentValues();
+          const newType = btn.dataset.type;
+          if (newType === sc.type) return;
+          if (newType === 'location') {
+            sc.type = 'location';
+            delete sc.dpe; delete sc.loans; delete sc.charges; delete sc.moveInDelay;
+          } else if (sc.type === 'location') {
+            const fresh = createDefaultScenario(newType);
+            sc.type    = newType;
+            sc.dpe     = fresh.dpe;
+            sc.loans   = fresh.loans;
+            sc.charges = fresh.charges;
+            sc.moveInDelay = fresh.moveInDelay;
+          } else {
+            sc.type = newType;
+          }
+          renderAllScenarios();
+          recalculate();
+        });
+      });
+    }
+
+    if (sc.type === 'location') continue;
+
+    // Wire les boutons DPE (toggleable)
     const group = document.getElementById(`dpeGroup_${sc.id}`);
     if (!group) continue;
     group.querySelectorAll('.dpe-btn').forEach(btn => {
@@ -208,33 +247,30 @@ function renderAllScenarios() {
         group.querySelectorAll('.dpe-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         // Affiche la note uniquement si DPE A + Neuf
-        const typeEl = document.getElementById(`type_${sc.id}`);
-        const isNew  = typeEl ? typeEl.checked : sc.type === 'neuf';
         const noteEl = document.getElementById(`dpeNote_${sc.id}`);
-        if (noteEl) noteEl.textContent = btn.dataset.dpe === 'A' && isNew ? '(−0,1% sur taux banque)' : '';
+        if (noteEl) noteEl.textContent = btn.dataset.dpe === 'A' && sc.type === 'neuf' ? '(−0,1% sur taux banque)' : '';
         recalculate();
       });
     });
-
-    // Wire le toggle Ancien/Neuf
-    const typeEl = document.getElementById(`type_${sc.id}`);
-    if (typeEl) {
-      typeEl.addEventListener('change', () => {
-        saveAllCurrentValues();
-        sc.type = typeEl.checked ? 'neuf' : 'ancien';
-        // Mise à jour de la note DPE sans reset de la sélection
-        const dpeActive = document.querySelector(`#dpeGroup_${sc.id} .dpe-btn.active`);
-        const currentDpe = dpeActive ? dpeActive.dataset.dpe : sc.dpe;
-        const noteEl = document.getElementById(`dpeNote_${sc.id}`);
-        if (noteEl) noteEl.textContent = currentDpe === 'A' && sc.type === 'neuf' ? '(−0,1% sur taux banque)' : '';
-        recalculate();
-      });
-    }
   }
+}
+
+/** Génère le sélecteur de type Ancien/Neuf/Location. */
+function renderTypeSelector(sc) {
+  const types = [
+    { key: 'ancien',   label: 'Ancien' },
+    { key: 'neuf',     label: 'Neuf' },
+    { key: 'location', label: 'Location' },
+  ];
+  return `<div class="type-group" id="typeGroup_${sc.id}">
+    ${types.map(t => `<button class="type-btn type-btn-${t.key} ${sc.type === t.key ? 'active' : ''}" data-type="${t.key}">${t.label}</button>`).join('')}
+  </div>`;
 }
 
 /** Génère le HTML complet d'une carte scénario. */
 function renderScenarioCard(sc) {
+  if (sc.type === 'location') return renderLocationCard(sc);
+
   const colorIdx = scenarioList.indexOf(sc) % SCENARIO_COLORS.length;
   const color    = SCENARIO_COLORS[colorIdx];
   const isNew    = sc.type === 'neuf';
@@ -266,14 +302,7 @@ function renderScenarioCard(sc) {
   <div class="flex items-center gap-2 mb-4 flex-wrap">
     <input type="text" id="name_${sc.id}" value="${escHtml(sc.name)}"
       class="scenario-name-input" oninput="recalculate()" />
-    <div class="flex items-center gap-1.5 ml-1">
-      <span class="text-xs text-amber-400 font-medium">Ancien</span>
-      <label class="toggle-switch">
-        <input type="checkbox" id="type_${sc.id}" ${isNew ? 'checked' : ''} />
-        <div class="toggle-track"></div>
-      </label>
-      <span class="text-xs text-emerald-400 font-medium">Neuf</span>
-    </div>
+    ${renderTypeSelector(sc)}
     ${notaryBadge}
     <div class="ml-auto">${removeBtn}</div>
   </div>
@@ -341,6 +370,39 @@ function renderScenarioCard(sc) {
   </div>
 
   <!-- ── Résultats détaillés ── -->
+  <div class="bg-gray-950 rounded-xl p-3" id="output_${sc.id}">
+    <p class="text-gray-600 text-xs text-center py-2">Calcul en cours…</p>
+  </div>
+
+</div>`;
+}
+
+/** Génère le HTML d'une carte scénario de type Location. */
+function renderLocationCard(sc) {
+  const colorIdx = scenarioList.indexOf(sc) % SCENARIO_COLORS.length;
+  const color    = SCENARIO_COLORS[colorIdx];
+
+  const removeBtn = scenarioList.length > 1
+    ? `<button onclick="removeScenario('${sc.id}')" class="remove-btn" title="Supprimer ce scénario">×</button>`
+    : '';
+
+  return `
+<div class="card scenario-card" id="scenarioCard_${sc.id}" style="border-left-color:${color}">
+
+  <div class="flex items-center gap-2 mb-4 flex-wrap">
+    <input type="text" id="name_${sc.id}" value="${escHtml(sc.name)}"
+      class="scenario-name-input" oninput="recalculate()" />
+    ${renderTypeSelector(sc)}
+    <span class="badge bg-indigo-900 text-indigo-300">Pas d'achat — ETF</span>
+    <div class="ml-auto">${removeBtn}</div>
+  </div>
+
+  <p class="text-xs text-gray-400 mb-3">
+    Tout le capital initial est placé en ETF. Chaque mois, le différentiel
+    <span class="text-indigo-300 font-semibold">budget global − loyer</span>
+    est réinvesti au taux d'épargne.
+  </p>
+
   <div class="bg-gray-950 rounded-xl p-3" id="output_${sc.id}">
     <p class="text-gray-600 text-xs text-center py-2">Calcul en cours…</p>
   </div>
@@ -497,14 +559,18 @@ function escHtml(str) {
 /** Lit les valeurs actuelles d'un scénario depuis le DOM. */
 function readScenarioValues(sc) {
   const sid  = sc.id;
-  const typeEl = document.getElementById(`type_${sid}`);
-  const type   = typeEl ? (typeEl.checked ? 'neuf' : 'ancien') : sc.type;
-
-  const dpeActive = document.querySelector(`#dpeGroup_${sid} .dpe-btn.active`);
-  const dpe       = dpeActive ? dpeActive.dataset.dpe : sc.dpe;
+  const typeActive = document.querySelector(`#typeGroup_${sid} .type-btn.active`);
+  const type   = typeActive ? typeActive.dataset.type : sc.type;
 
   const nameEl = document.getElementById(`name_${sid}`);
   const name   = nameEl ? (nameEl.value || sc.name) : sc.name;
+
+  if (type === 'location') {
+    return { id: sid, name, type: 'location' };
+  }
+
+  const dpeActive = document.querySelector(`#dpeGroup_${sid} .dpe-btn.active`);
+  const dpe       = dpeActive ? dpeActive.dataset.dpe : sc.dpe;
 
   const charges = {
     coOwnership:   domNum(`co_${sid}`,  sc.charges.coOwnership),
@@ -570,6 +636,8 @@ function readLoanValues(loan) {
  *   wealthSeries, schedule } ou null si données insuffisantes.
  */
 function calcScenario(scValues, globalInputs) {
+  if (scValues.type === 'location') return calcLocationScenario(scValues, globalInputs);
+
   const { type, dpe, loans, charges } = scValues;
   const isNew = type === 'neuf';
 
@@ -649,6 +717,12 @@ function calcScenario(scValues, globalInputs) {
   const totalChargesMonthly = charges.coOwnership + charges.homeInsurance + worksMonthly;
   const remainingIncome     = globalInputs.netSalary - totalMonthly - totalChargesMonthly - taxMonthly;
 
+  // ETF complémentaire mensuel = budget global − mensualité − charges propriétaire
+  const monthlyBudget   = globalInputs.monthlyBudget ?? (globalInputs.netSalary * (globalInputs.investmentPct ?? 70) / 100);
+  const etfMonthlyRaw   = monthlyBudget - totalMonthly - totalChargesMonthly - taxMonthly;
+  const etfMonthly      = Math.max(0, etfMonthlyRaw);
+  const budgetOverflow  = etfMonthlyRaw < 0;
+
   // Coût total du crédit
   const bankPaid  = smoothed.schedule.reduce((s, e) => s + e.bankPmt + e.insMonthly, 0);
   const alPaid    = alMonthlyPmt * alMonths;
@@ -673,7 +747,8 @@ function calcScenario(scValues, globalInputs) {
   const wealthSeries = buildPurchaseWealthSeries(
     V, extSchedule, residualSavings,
     globalInputs.propertyGrowthRate, globalInputs.savingsReturnRate, globalInputs.simYears,
-    decotePct, moveInDelayMonths, globalInputs.currentRent
+    decotePct, moveInDelayMonths, globalInputs.currentRent,
+    etfMonthly
   );
 
   // ─── Données détaillées ───────────────────────────────────────────
@@ -763,6 +838,12 @@ function calcScenario(scValues, globalInputs) {
   const finalPropertyValue = effectiveV * Math.pow(1 + globalInputs.propertyGrowthRate / 100, globalInputs.simYears);
   const finalDebt          = extSchedule[extSchedule.length - 1]?.totalBalance || 0;
   const finalSavings       = residualSavings * Math.pow(1 + globalInputs.savingsReturnRate / 100, globalInputs.simYears);
+  // Valeur finale de l'ETF complémentaire (versements mensuels capitalisés au taux d'épargne)
+  const mRate              = globalInputs.savingsReturnRate / 100 / 12;
+  const totalMonthsSim     = globalInputs.simYears * 12;
+  const etfFinal           = mRate === 0
+    ? etfMonthly * totalMonthsSim
+    : etfMonthly * (Math.pow(1 + mRate, totalMonthsSim) - 1) / mRate;
   const forecast = {
     simYears:           globalInputs.simYears,
     propertyPrice:      V,
@@ -774,20 +855,76 @@ function calcScenario(scValues, globalInputs) {
     finalDebt,
     finalSavings,
     residualSavings,
+    etfMonthly,
+    etfFinal,
     finalWealth:        wealthSeries[wealthSeries.length - 1] || 0,
   };
 
   return {
+    type: 'achat',
     V, bankPrincipal, ptzAmount, alAmount, totalMonthly,
     totalChargesMonthly, taxMonthly, remainingIncome,
     creditCost, realCost, wealthSeries, schedule: extSchedule,
     acquisition, monthly, bankAnalysis, ptzAnalysis, alAnalysis, forecast,
     moveInDelayMonths, totalRentDuringDelay,
     currentRent: globalInputs.currentRent,
+    monthlyBudget, etfMonthly, etfMonthlyRaw, budgetOverflow,
+    investmentPct: globalInputs.investmentPct,
+  };
+}
+
+// ─── CALCUL D'UN SCÉNARIO LOCATION (PAS D'ACHAT) ──────────────────
+
+function calcLocationScenario(scValues, globalInputs) {
+  const rent             = globalInputs.currentRent;
+  const monthlyBudget    = globalInputs.monthlyBudget ?? (globalInputs.netSalary * (globalInputs.investmentPct ?? 70) / 100);
+  const etfMonthlyRaw    = monthlyBudget - rent;
+  const etfMonthly       = Math.max(0, etfMonthlyRaw);
+  const budgetOverflow   = etfMonthlyRaw < 0;
+  const initialPortfolio = globalInputs.totalCapital;
+  const remainingIncome  = globalInputs.netSalary - rent - etfMonthly;
+
+  const wealthSeries = buildLocationWealthSeries(
+    initialPortfolio, monthlyBudget, rent,
+    globalInputs.inflationRate, globalInputs.savingsReturnRate, globalInputs.simYears
+  );
+
+  const monthlyRate = globalInputs.savingsReturnRate / 100 / 12;
+  const totalMonths = globalInputs.simYears * 12;
+  const capitalAlone= initialPortfolio * Math.pow(1 + monthlyRate, totalMonths);
+  const finalWealth = wealthSeries[wealthSeries.length - 1] || 0;
+  const finalRent   = rent * Math.pow(1 + globalInputs.inflationRate / 100, globalInputs.simYears);
+
+  return {
+    type: 'location',
+    wealthSeries,
+    investmentPct: globalInputs.investmentPct,
+    monthlyBudget,
+    currentRent: rent,
+    finalRent,
+    etfMonthly,
+    etfMonthlyRaw,
+    budgetOverflow,
+    remainingIncome,
+    initialPortfolio,
+    capitalAlone,
+    finalWealth,
+    simYears: globalInputs.simYears,
+    savingsReturnRate: globalInputs.savingsReturnRate,
+    inflationRate: globalInputs.inflationRate,
   };
 }
 
 // ─── RENDU DES RÉSULTATS ──────────────────────────────────────────
+
+// Helpers d'affichage partagés
+const _row  = (label, val, cls = '')  => `<div class="dr"><span>${label}</span><span class="${cls}">${val}</span></div>`;
+const _sub  = (label, val, cls = '')  => `<div class="dr sub"><span>${label}</span><span class="${cls}">${val}</span></div>`;
+const _tot  = (label, val, cls = '')  => `<div class="dr tot"><span>${label}</span><span class="${cls}">${val}</span></div>`;
+const _sep  = ()                      => `<div class="dr-sep"></div>`;
+const _sec  = (title, body)           => `<div class="ds"><p class="dt">${title}</p>${body}</div>`;
+const _fmtPct = v => v.toFixed(2) + '%';
+const _fmtAns = v => v + ' an' + (v > 1 ? 's' : '');
 
 function renderScenarioResults(scId, result) {
   const container = document.getElementById(`output_${scId}`);
@@ -798,9 +935,12 @@ function renderScenarioResults(scId, result) {
     return;
   }
 
+  if (result.type === 'location') return renderLocationResults(scId, result);
+
   const { V, totalMonthly, remainingIncome,
           acquisition, monthly, bankAnalysis,
-          ptzAnalysis, alAnalysis, forecast } = result;
+          ptzAnalysis, alAnalysis, forecast,
+          monthlyBudget, etfMonthly, budgetOverflow, investmentPct } = result;
 
   // Couleur du scénario (pour accent sur le budget)
   const scIdx  = scenarioList.findIndex(s => s.id === scId);
@@ -809,14 +949,8 @@ function renderScenarioResults(scId, result) {
   // Couleur reste à vivre
   const riColor = remainingIncome >= 800 ? '#34d399' : remainingIncome >= 400 ? '#fbbf24' : '#f87171';
 
-  // Helpers locaux
-  const row  = (label, val, cls = '')       => `<div class="dr"><span>${label}</span><span class="${cls}">${val}</span></div>`;
-  const sub  = (label, val, cls = '')       => `<div class="dr sub"><span>${label}</span><span class="${cls}">${val}</span></div>`;
-  const tot  = (label, val, cls = '')       => `<div class="dr tot"><span>${label}</span><span class="${cls}">${val}</span></div>`;
-  const sep  = ()                           => `<div class="dr-sep"></div>`;
-  const sec  = (title, body)               => `<div class="ds"><p class="dt">${title}</p>${body}</div>`;
-  const fmtPct = v => v.toFixed(2) + '%';
-  const fmtAns = v => v + ' an' + (v > 1 ? 's' : '');
+  // Alias des helpers
+  const row = _row, sub = _sub, tot = _tot, sep = _sep, sec = _sec, fmtPct = _fmtPct, fmtAns = _fmtAns;
 
   // ── 1. Synthèse rapide ──────────────────────────────────────────
   const synthese = `
@@ -870,6 +1004,11 @@ function renderScenarioResults(scId, result) {
     (monthly.works        > 0 ? sub('+ Provision travaux', fmt(monthly.works) + '/mois') : '') +
     (monthly.tax          > 0 ? sub('+ Taxe foncière (proratisée)', fmt(monthly.tax) + '/mois') : '') +
     tot('= Total mensuel (crédit + charges)', fmt(totalMensuel) + '/mois') +
+    sep() +
+    row(`Budget global investissement (${investmentPct ?? 70}% salaire)`, fmt(monthlyBudget) + '/mois', 'text-blue-300') +
+    sub('− Crédit + charges propriétaire', '−' + fmt(totalMensuel) + '/mois') +
+    tot('= ETF complémentaire mensuel', fmt(etfMonthly) + '/mois', budgetOverflow ? 'text-red-400' : 'text-emerald-400') +
+    (budgetOverflow ? sub('⚠ Scénario dépasse le budget — ETF ramené à 0 €', '', 'text-red-300') : '') +
     sep() +
     row('Salaire net', fmt(monthly.debtRatioPct > 0 ? totalMonthly / (monthly.debtRatioPct / 100) : 0) + '/mois') +
     row('Taux d\'endettement effectif (crédit seul)', fmtPct(monthly.debtRatioPct),
@@ -963,8 +1102,97 @@ function renderScenarioResults(scId, result) {
       : sub('Prêt entièrement remboursé ✓', '', 'text-emerald-400')) +
     sub('− Frais de revente estimés (6%)', '−' + fmt(fo.finalPropertyValue * 0.06), 'text-red-300') +
     (fo.finalSavings > 0 ? sub('+ Épargne résiduelle revalorisée', '+' + fmt(fo.finalSavings), 'text-blue-300') : '') +
+    (fo.etfMonthly > 0 ? sub('+ ETF complémentaire (' + fmt(fo.etfMonthly) + '/mois capitalisés)', '+' + fmt(fo.etfFinal), 'text-indigo-300') : '') +
     tot('Patrimoine net estimé à ' + fmtAns(fo.simYears), fmt(fo.finalWealth), 'text-emerald-400');
   const forecastSection = sec('Prévision patrimoniale à ' + fmtAns(fo.simYears), forecastBody);
 
   container.innerHTML = synthese + acqSection + budgetSection + bankSection + ptzSection + alSection + delaySection + forecastSection;
+}
+
+// ─── RENDU DES RÉSULTATS — SCÉNARIO LOCATION ──────────────────────
+
+function renderLocationResults(scId, result) {
+  const container = document.getElementById(`output_${scId}`);
+  if (!container) return;
+
+  const { monthlyBudget, currentRent, finalRent, etfMonthly, budgetOverflow,
+          remainingIncome, initialPortfolio, capitalAlone, finalWealth,
+          wealthSeries, simYears, savingsReturnRate, inflationRate,
+          investmentPct } = result;
+
+  const scIdx  = scenarioList.findIndex(s => s.id === scId);
+  const accent = SCENARIO_COLORS[scIdx % SCENARIO_COLORS.length] || '#818cf8';
+  const riColor = remainingIncome >= 800 ? '#34d399' : remainingIncome >= 400 ? '#fbbf24' : '#f87171';
+
+  const row = _row, sub = _sub, tot = _tot, sep = _sep, sec = _sec, fmtPct = _fmtPct, fmtAns = _fmtAns;
+
+  // ── 1. Synthèse rapide ─────────────────────────────────────────
+  const synthese = `
+    <div class="ds-kpi">
+      <div class="kpi">
+        <span class="kpi-sub">Budget mensuel invest.</span>
+        <span class="kpi-val" style="color:${accent}">${fmt(monthlyBudget)}<span class="kpi-unit">/mois</span></span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-sub">Loyer (an 1)</span>
+        <span class="kpi-val">${fmt(currentRent)}<span class="kpi-unit">/mois</span></span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-sub">ETF mensuel</span>
+        <span class="kpi-val" style="color:${budgetOverflow ? '#f87171' : '#34d399'}">${fmt(etfMonthly)}<span class="kpi-unit">/mois</span></span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-sub">Patrimoine à ${fmtAns(simYears)}</span>
+        <span class="kpi-val" style="color:${accent}">${fmt(finalWealth)}</span>
+      </div>
+    </div>`;
+
+  // ── 2. Flux mensuels ───────────────────────────────────────────
+  const flowBody =
+    row(`Budget global investissement (${investmentPct ?? 70}% salaire)`, fmt(monthlyBudget) + '/mois', 'text-blue-300') +
+    sub('− Loyer (an 1)', '−' + fmt(currentRent) + '/mois', 'text-orange-300') +
+    tot('= ETF mensuel net', fmt(etfMonthly) + '/mois', budgetOverflow ? 'text-red-400' : 'text-emerald-400') +
+    (budgetOverflow ? sub('⚠ Loyer > budget investissement — ETF ramené à 0 €', '', 'text-red-300') : sub('Réinvesti chaque mois au taux ' + fmtPct(savingsReturnRate) + '/an', '')) +
+    sep() +
+    row('Salaire net', fmt(investmentPct > 0 ? monthlyBudget / (investmentPct / 100) : 0) + '/mois') +
+    tot('Reste à vivre (hors investissement & loyer)', fmt(remainingIncome) + '/mois',
+        remainingIncome >= 800 ? 'text-emerald-400' : remainingIncome >= 400 ? 'text-yellow-400' : 'text-red-400');
+  const flowSection = sec('Flux mensuels', flowBody);
+
+  // ── 3. Évolution du loyer ──────────────────────────────────────
+  const rentSection = sec(`Évolution du loyer (inflation ${fmtPct(inflationRate)}/an)`,
+    row(`Loyer à l'an 1`, fmt(currentRent) + '/mois') +
+    row(`Loyer à l'an ${simYears}`, fmt(finalRent) + '/mois', 'text-orange-300') +
+    sub('Le différentiel mensuel est recalculé chaque année (loyer indexé sur inflation)', '')
+  );
+
+  // ── 4. Capital initial ────────────────────────────────────────
+  const capitalGain = capitalAlone - initialPortfolio;
+  const flowContrib = Math.max(0, finalWealth - capitalAlone);
+  const capitalSection = sec('Capital initial — Intérêts composés',
+    row('Capital initial placé', fmt(initialPortfolio)) +
+    row('Rendement annuel', fmtPct(savingsReturnRate)) +
+    sep() +
+    sub(`Formule : ${fmt(initialPortfolio)} × (1 + ${fmtPct(savingsReturnRate / 12)})^${simYears * 12} mois`, '') +
+    tot(`Capital seul après ${fmtAns(simYears)}`, fmt(capitalAlone), 'text-blue-300') +
+    sub('Gain intérêts composés : +' + fmt(capitalGain), '', 'text-emerald-400') +
+    (flowContrib > 0
+      ? sep() + row('+ Accumulation des versements mensuels', '+' + fmt(flowContrib), 'text-emerald-400')
+      : '') +
+    tot(`= Patrimoine total à ${fmtAns(simYears)}`, fmt(finalWealth), 'text-indigo-300')
+  );
+
+  // ── 5. Jalons ─────────────────────────────────────────────────
+  const milestoneYears = [5, 10, 15, 20, 25, 30].filter(y => y <= simYears && wealthSeries[y - 1] !== undefined);
+  let milestonesSection = '';
+  if (milestoneYears.length > 1) {
+    const msBody = milestoneYears.map(y =>
+      y < simYears
+        ? row(`Patrimoine à ${fmtAns(y)}`, fmt(wealthSeries[y - 1]), 'text-indigo-300')
+        : tot(`Patrimoine à ${fmtAns(y)}`, fmt(wealthSeries[y - 1]), 'text-indigo-300')
+    ).join('');
+    milestonesSection = sec('Jalons patrimoniaux', msBody);
+  }
+
+  container.innerHTML = synthese + flowSection + rentSection + capitalSection + milestonesSection;
 }

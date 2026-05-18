@@ -206,7 +206,7 @@ function computeSmoothedSchedule({ targetMonthly, bankRate, bankMonths, borrower
  *   en plus des mensualités du crédit, ce qui réduit l'épargne résiduelle.
  * @param {number} currentRent - Loyer mensuel courant (€/mois).
  */
-function buildPurchaseWealthSeries(V, schedule, residualSavings, propertyGrowthRate, savingsReturnRate, simYears, decotePct = 0, moveInDelayMonths = 0, currentRent = 0) {
+function buildPurchaseWealthSeries(V, schedule, residualSavings, propertyGrowthRate, savingsReturnRate, simYears, decotePct = 0, moveInDelayMonths = 0, currentRent = 0, etfMonthly = 0) {
   const series = [];
   let propVal = V * (1 - decotePct / 100);
   let savings = residualSavings;
@@ -218,6 +218,7 @@ function buildPurchaseWealthSeries(V, schedule, residualSavings, propertyGrowthR
     if (month <= moveInDelayMonths) {
       savings = Math.max(0, savings - currentRent);
     }
+    if (etfMonthly > 0) savings += etfMonthly;
     if (month % 12 === 0) {
       propVal *= (1 + propertyGrowthRate / 100);
       const idx = Math.min(month, schedule.length) - 1;
@@ -230,21 +231,21 @@ function buildPurchaseWealthSeries(V, schedule, residualSavings, propertyGrowthR
 }
 
 /**
- * Patrimoine net annuel pour le scénario locataire.
- * Le locataire place son apport initial + le différentiel mensuel (mensualité achat − loyer).
- * Boucle mensuelle pour les intérêts composés.
+ * Patrimoine net annuel pour un scénario location (pas d'achat).
+ * Le locataire investit tout son capital initial en ETF et y verse chaque mois
+ * le différentiel (budget global d'investissement − loyer), clampé à 0.
  */
-function buildTenantWealthSeries(initialSavings, purchaseMonthly, purchaseCharges, currentRent, inflationRate, savingsReturnRate, simYears) {
+function buildLocationWealthSeries(initialPortfolio, monthlyBudget, currentRent, inflationRate, savingsReturnRate, simYears) {
   const series      = [];
   const monthlyRate = savingsReturnRate / 100 / 12;
-  let portfolio     = initialSavings;
+  let portfolio     = initialPortfolio;
   let rent          = currentRent;
 
   for (let year = 1; year <= simYears; year++) {
     for (let m = 0; m < 12; m++) {
       portfolio *= (1 + monthlyRate);
-      const diff = (purchaseMonthly + purchaseCharges) - rent;
-      if (diff > 0) portfolio += diff;
+      const flow = monthlyBudget - rent;
+      if (flow > 0) portfolio += flow;
     }
     rent *= (1 + inflationRate / 100);
     series.push(portfolio);

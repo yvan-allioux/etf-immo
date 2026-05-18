@@ -97,6 +97,32 @@ input[type=range]::-moz-range-thumb {
 .loan-card.loan-al     { border-left: 3px solid #a78bfa; }
 .loan-card.loan-don    { border-left: 3px solid #10b981; }
 
+/* ─── TYPE SELECTOR (Ancien / Neuf / Location) ──────────── */
+.type-group {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: #111827;
+  border: 1px solid #374151;
+  border-radius: 8px;
+}
+.type-btn {
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.type-btn:hover { color: #e5e7eb; background: #1f2937; }
+.type-btn.active { background: #1f2937; color: #f9fafb; }
+.type-btn-ancien.active   { color: #fcd34d; box-shadow: inset 0 0 0 1px #f59e0b66; }
+.type-btn-neuf.active     { color: #6ee7b7; box-shadow: inset 0 0 0 1px #10b98166; }
+.type-btn-location.active { color: #a5b4fc; box-shadow: inset 0 0 0 1px #818cf866; }
+
 /* ─── DPE BUTTONS ───────────────────────────────────────── */
 .dpe-btn {
   padding: 3px 9px;
