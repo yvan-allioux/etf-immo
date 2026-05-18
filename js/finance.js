@@ -42,11 +42,14 @@ function guaranteeFees(loan, pct)   { return loan * pct / 100; }
 
 /**
  * Trouve le prix max du bien V tel que :
- *   V + fraisNotaire(V) + fraisAgence(V) + fraisGarantie(emprunt) + fraisFixés = apport + empruntMax
+ *   V + fraisNotaire(V) + fraisAgence(V) + fraisGarantie(empruntBanque) + fraisFixés = apport + empruntMax
  *
  * Résout la dépendance circulaire par bisection (~60 itérations, précision < 0,50 €).
+ *
+ * @param {number} auxLoanTotal - Total des prêts aidés (PTZ + AL) qui n'ont pas
+ *   de frais de garantie. La caution n'est facturée que sur la part bancaire.
  */
-function findMaxPropertyPrice(contribution, maxLoan, isNew, agencyPct, guaranteePct, fixedFees) {
+function findMaxPropertyPrice(contribution, maxLoan, isNew, agencyPct, guaranteePct, fixedFees, auxLoanTotal = 0) {
   const totalAvailable = contribution + maxLoan;
   if (totalAvailable <= 0) return 0;
   let lo = 0, hi = totalAvailable;
@@ -55,8 +58,9 @@ function findMaxPropertyPrice(contribution, maxLoan, isNew, agencyPct, guarantee
     const mid = (lo + hi) / 2;
     const nf = notaryFees(mid, isNew);
     const af = agencyFees(mid, agencyPct);
-    const loanNeeded = Math.max(0, mid + nf + af + fixedFees - contribution);
-    const gf = guaranteeFees(loanNeeded, guaranteePct);
+    const loanNeeded   = Math.max(0, mid + nf + af + fixedFees - contribution);
+    const bankPortion  = Math.max(0, loanNeeded - auxLoanTotal);
+    const gf = guaranteeFees(bankPortion, guaranteePct);
     const totalCost = mid + nf + af + gf + fixedFees;
     if (Math.abs(totalCost - totalAvailable) < 0.5) return mid;
     if (totalCost > totalAvailable) hi = mid; else lo = mid;
