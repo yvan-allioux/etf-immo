@@ -54,6 +54,7 @@ function createDefaultScenario(type) {
     name,
     type,
     dpe:    isNew ? 'A' : 'C',
+    debtRatio: 35,
     loans:  [createLoan('banque', type)],
     charges: {
       coOwnership:  150,
@@ -84,6 +85,9 @@ function saveCurrentValues(scId) {
   // DPE
   const dpeActive = document.querySelector(`#dpeGroup_${scId} .dpe-btn.active`);
   if (dpeActive) sc.dpe = dpeActive.dataset.dpe;
+
+  // Taux d'endettement
+  sc.debtRatio = domNum(`dr_${scId}`, sc.debtRatio ?? 35);
 
   // Charges
   sc.charges.coOwnership  = domNum(`co_${scId}`,  sc.charges.coOwnership);
@@ -165,7 +169,7 @@ function removeLoan(scId, loanId) {
  * Reconstruit scenarioList depuis des données désérialisées.
  * Appelé par deserializeState() dans main.js lors du chargement d'un lien partagé.
  */
-function loadScenariosFromData(scenariosData) {
+function loadScenariosFromData(scenariosData, legacyDebtRatio) {
   scenarioList.length = 0;
   _scCounter = 0;
   _lnCounter = 0;
@@ -180,6 +184,7 @@ function loadScenariosFromData(scenariosData) {
       name: sd.n,
       type: sd.t,
       dpe:  sd.d,
+      debtRatio: sd.dr ?? legacyDebtRatio ?? 35,
       charges: {
         coOwnership:   sd.ch[0],
         homeInsurance: sd.ch[1],
@@ -315,6 +320,16 @@ function renderScenarioCard(sc) {
         <button class="dpe-btn ${dpeColor[d]} ${sc.dpe === d ? 'active' : ''}" data-dpe="${d}">${d}</button>
       `).join('')}
     </div>
+  </div>
+
+  <!-- ── Taux d'endettement ── -->
+  <div class="mb-4">
+    <label class="label">Taux d'endettement max :
+      <span id="drVal_${sc.id}" class="text-blue-400 font-semibold">${sc.debtRatio ?? 35}%</span>
+      <span class="text-gray-500 text-xs ml-1">(détermine la mensualité crédit max)</span>
+    </label>
+    <input type="range" id="dr_${sc.id}" min="20" max="45" step="1" value="${sc.debtRatio ?? 35}"
+      oninput="document.getElementById('drVal_${sc.id}').textContent=this.value+'%';recalculate()" />
   </div>
 
   <!-- ── Prêts ── -->
@@ -571,6 +586,7 @@ function readScenarioValues(sc) {
 
   const dpeActive = document.querySelector(`#dpeGroup_${sid} .dpe-btn.active`);
   const dpe       = dpeActive ? dpeActive.dataset.dpe : sc.dpe;
+  const debtRatio = domNum(`dr_${sid}`, sc.debtRatio ?? 35);
 
   const charges = {
     coOwnership:   domNum(`co_${sid}`,  sc.charges.coOwnership),
@@ -581,7 +597,7 @@ function readScenarioValues(sc) {
 
   const loans = sc.loans.map(loan => readLoanValues(loan));
   const moveInDelay = domNum(`delay_${sid}`, sc.moveInDelay ?? 0);
-  return { id: sid, name, type, dpe, loans, charges, moveInDelay };
+  return { id: sid, name, type, dpe, debtRatio, loans, charges, moveInDelay };
 }
 
 function readLoanValues(loan) {
@@ -693,7 +709,8 @@ function calcScenario(scValues, globalInputs) {
   // Capacité de remboursement bancaire = salaire × taux d'endettement uniquement.
   // Les charges annexes (copropriété, taxe foncière, travaux…) n'entrent PAS dans
   // ce calcul — elles réduisent seulement le reste à vivre.
-  const avail = availableForLoan(globalInputs.netSalary, globalInputs.debtRatio);
+  const debtRatio = scValues.debtRatio ?? 35;
+  const avail = availableForLoan(globalInputs.netSalary, debtRatio);
 
   // avail est constant (indépendant de V) → un seul calcul suffit
   const smoothed = computeSmoothedSchedule({

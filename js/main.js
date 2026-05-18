@@ -17,7 +17,6 @@ function readGlobalInputs() {
     totalCapital:      g('totalCapital'),
     maxContribution:   g('maxContribution'),
     currentRent:       g('currentRent'),
-    debtRatio:         g('debtRatio'),
     inflationRate:     g('inflationRate'),
     propertyGrowthRate:g('propertyGrowthRate'),
     savingsReturnRate: g('savingsReturnRate'),
@@ -31,7 +30,6 @@ function readGlobalInputs() {
 // ─── SYNCHRONISATION DES SLIDERS ──────────────────────────────────
 
 const SLIDER_PAIRS = [
-  ['debtRatio',          'debtRatioVal',     v => v + '%'],
   ['investmentPct',      'investmentPctVal', v => v + '%'],
   ['inflationRate',      'inflationVal',     v => parseFloat(v).toFixed(1) + '%'],
   ['propertyGrowthRate', 'growthVal',        v => parseFloat(v).toFixed(1) + '%'],
@@ -70,10 +68,10 @@ function serializeState() {
   saveAllCurrentValues();
   const g = readGlobalInputs();
   const data = {
-    v: 3,
-    // Tableau ordonné pour compacité — slot 9 = investmentPct
+    v: 4,
+    // Tableau ordonné pour compacité — slot 8 = investmentPct
     g: [g.netSalary, g.totalCapital, g.maxContribution, g.currentRent,
-        g.debtRatio, g.inflationRate, g.propertyGrowthRate, g.savingsReturnRate, g.simYears,
+        g.inflationRate, g.propertyGrowthRate, g.savingsReturnRate, g.simYears,
         g.investmentPct],
     sc: scenarioList.map(sc => {
       if (sc.type === 'location') return { n: sc.name, t: 'location' };
@@ -81,6 +79,7 @@ function serializeState() {
         n:  sc.name,
         t:  sc.type,
         d:  sc.dpe,
+        dr: sc.debtRatio ?? 35,
         ch: [sc.charges.coOwnership, sc.charges.homeInsurance, sc.charges.worksPct, sc.charges.taxMonths],
         del: sc.moveInDelay ?? 0,
         ln: sc.loans.map(l => {
@@ -103,24 +102,44 @@ function serializeState() {
 function deserializeState(encoded) {
   try {
     const data = JSON.parse(decodeURIComponent(escape(atob(encoded))));
-    if (!data || ![1, 2, 3].includes(data.v) || !Array.isArray(data.g) || !Array.isArray(data.sc)) return false;
+    if (!data || ![1, 2, 3, 4].includes(data.v) || !Array.isArray(data.g) || !Array.isArray(data.sc)) return false;
 
-    // Restaure les inputs globaux (slot 9 = investmentPct, absent en v:1/v:2 → défaut 70)
-    const inputIds = ['netSalary', 'totalCapital', 'maxContribution', 'currentRent',
-                      'debtRatio', 'inflationRate', 'propertyGrowthRate', 'savingsReturnRate', 'simYears',
-                      'investmentPct'];
-    inputIds.forEach((id, i) => {
+    // Format global selon la version :
+    //   v:1/2/3 → [netSalary, totalCapital, maxContribution, currentRent, debtRatio, inflationRate, propertyGrowthRate, savingsReturnRate, simYears, (investmentPct si v:3)]
+    //   v:4     → [netSalary, totalCapital, maxContribution, currentRent, inflationRate, propertyGrowthRate, savingsReturnRate, simYears, investmentPct]
+    let legacyDebtRatio;
+    let g;
+    if (data.v === 4) {
+      g = {
+        netSalary:         data.g[0], totalCapital:    data.g[1], maxContribution: data.g[2],
+        currentRent:       data.g[3], inflationRate:   data.g[4], propertyGrowthRate: data.g[5],
+        savingsReturnRate: data.g[6], simYears:        data.g[7], investmentPct:   data.g[8] ?? 70,
+      };
+    } else {
+      legacyDebtRatio = data.g[4];
+      g = {
+        netSalary:         data.g[0], totalCapital:    data.g[1], maxContribution: data.g[2],
+        currentRent:       data.g[3], inflationRate:   data.g[5], propertyGrowthRate: data.g[6],
+        savingsReturnRate: data.g[7], simYears:        data.g[8], investmentPct:   data.g[9] ?? 70,
+      };
+    }
+
+    const inputMap = {
+      netSalary: g.netSalary, totalCapital: g.totalCapital, maxContribution: g.maxContribution,
+      currentRent: g.currentRent, inflationRate: g.inflationRate,
+      propertyGrowthRate: g.propertyGrowthRate, savingsReturnRate: g.savingsReturnRate,
+      simYears: g.simYears, investmentPct: g.investmentPct,
+    };
+    for (const [id, val] of Object.entries(inputMap)) {
       const el = document.getElementById(id);
-      if (!el) return;
-      if (data.g[i] !== undefined) el.value = data.g[i];
-      else if (id === 'investmentPct') el.value = 70;
-    });
+      if (el && val !== undefined) el.value = val;
+    }
 
     // Met à jour l'affichage des labels de sliders
     syncSliderDisplays();
 
-    // Reconstruit et rend les scénarios
-    loadScenariosFromData(data.sc);
+    // Reconstruit et rend les scénarios (legacyDebtRatio injecté dans chaque scénario d'achat)
+    loadScenariosFromData(data.sc, legacyDebtRatio);
 
     // Calcule tout
     recalculate();
